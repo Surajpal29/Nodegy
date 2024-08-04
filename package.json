@@ -1,13 +1,31 @@
 {
   "name": "nodegy",
-  "version": "1.0.0",
-  "description": "",
-  "main": "khudkanodemon.js",
+  "version": "1.4.2",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node khudkanodemon.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "author": {
+    "name": "suraj pal",
+    "email": "surajpal141516@gmail.com"
+  },
+  "engines": {
+    "node": ">=10"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0"
+  },
+  "keywords": [
+    "vegazync",
+    "watch",
+    "monitor",
+    "development",
+    "restart",
+    "autoload",
+    "reload",
+    "terminal",
+    "fs",
+    "file",
+    "cli",
+    "trending"
+  ]
 }

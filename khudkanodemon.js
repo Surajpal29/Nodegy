@@ -1,183 +1,146 @@
-const fs = require("fs");
-const path = require("path");
+#!/usr/bin/env node
+
 const { spawn } = require("child_process");
+const chokidar = require("chokidar");
+const path = require("path");
 
-let displayAsJson = true; // Default display format
-let nodeProcess = null;
-let processClosed = true;
-let showFullTree = false; // Control flag for showing the full tree
-let changeTimeout = null; // Timeout ID for debouncing
+let serverProcess = null;
+let isProcessClosed = true;
+const watchPaths = [
+  path.join(process.cwd(), "/**/*.js"),
+  path.join(process.cwd(), "/**/*.json"),
+  path.join(process.cwd(), "/**/*.html"),
+  path.join(process.cwd(), "/**/*.css"),
+  path.join(process.cwd(), "/**/*.{png,jpg,jpeg,gif,svg}"),
+  path.join(process.cwd(), "/**/*.md"),
+];
 
-// Build the directory tree recursively
-const buildTree = (dirPath) => {
-  const tree = {};
-  const files = fs.readdirSync(dirPath, { withFileTypes: true });
+const delayTime = 1000;
+const intervalTime = 500;
 
-  files.forEach((file) => {
-    const fullPath = path.join(dirPath, file.name);
-    if (file.isDirectory()) {
-      tree[file.name] = buildTree(fullPath);
-    } else {
-      tree[file.name] = "file";
+const messages = {
+  welcome: `\x1b[32mWelcome to SyncServer\x1b[0m`,
+  version: `\x1b[34mv1.0.0\x1b[0m`,
+  rebooting: `\x1b[35m... SyncServer Rebooting ...\x1b[0m`,
+  manualRestart: `\x1b[33mPress 'r' to manually restart the server\x1b[0m`,
+  manualStop: `\x1b[33mPress 'c' to stop the server\x1b[0m`,
+  devDetails: `\x1b[33mPress 'dev' to know more about the developer\x1b[0m`,
+  compatibleExtensions: `\x1b[35mCompatible extensions: .js, .json, .html, .css, .png, .jpg, .jpeg, .gif, .svg, .md\x1b[0m`,
+  closing: `\x1b[31m... SyncServer Shutting Down ...\x1b[0m`,
+  developerInfo: `\x1b[32mDeveloper: Alex Doe\x1b[0m`,
+  developerEmail: `\x1b[32mEmail: alexdoe@example.com\x1b[0m`,
+  developerStatus: `\x1b[32mCurrently available for new opportunities\x1b[0m`,
+};
+
+if (process.argv.length === 3) {
+  console.log(messages.welcome, messages.version);
+  console.log(messages.manualRestart);
+  console.log(messages.manualStop);
+  console.log(messages.devDetails);
+  console.log(messages.compatibleExtensions);
+
+  initialize();
+}
+
+function initialize() {
+  serverProcess = startServerProcess();
+  watchFiles();
+
+  process.on("SIGINT", async () => await handleClose());
+  process.on("SIGTERM", async () => await handleClose());
+  process.on("exit", async () => await handleClose());
+
+  process.stdin.on("data", async (chunk) => {
+    const input = chunk.toString().trim();
+    if (input === "r") await reloadServer();
+    if (input === "c") await handleClose();
+    if (input === "dev") {
+      displayDevDetails();
+      await reloadServer();
     }
   });
+}
 
-  return tree;
-};
-
-// Read the directory and display the tree
-const readDirectory = (dirPath) => {
-  try {
-    const dirTree = buildTree(dirPath);
-    console.log("\x1b[36m%s\x1b[0m", "Restarting the server.🚀");
-    if (displayAsJson) {
-      console.log(JSON.stringify(dirTree, null, 2));
-    } else {
-      console.log(flattenTree(dirTree));
-    }
-  } catch (err) {
-    console.error(
-      "\x1b[31m%s\x1b[0m",
-      `Error reading directory '${dirPath}':`,
-      err.message
-    );
-  }
-};
-
-// Flatten the directory tree for normal format display
-const flattenTree = (tree, prefix = "") => {
-  let result = "";
-  for (const key in tree) {
-    if (tree[key] === "file") {
-      result += `${prefix}${key}\n`;
-    } else {
-      result += `${prefix}${key}/\n`;
-      result += flattenTree(tree[key], `${prefix}  `);
-    }
-  }
-  return result;
-};
-
-// Start the Node.js process
-const startProcess = () => {
-  let childProcess = spawn("node", ["index.js"], {
+function startServerProcess() {
+  const childProcess = spawn("node", [process.argv[2]], {
     stdio: [process.stdin, process.stdout, process.stderr],
   });
-  processClosed = false;
+
+  isProcessClosed = false;
 
   childProcess.on("close", () => {
-    processClosed = true;
-    console.log(
-      "\x1b[32m%s\x1b[0m",
-      "Process closed, waiting for changes to restart..."
-    );
+    isProcessClosed = true;
+    console.log(messages.rebooting);
+    console.log("Rebooting:", process.argv[2]);
   });
 
-  childProcess.on("error", (err) => {
-    processClosed = true;
-    console.error(err);
+  childProcess.on("error", (error) => {
+    isProcessClosed = true;
+    console.error(error);
   });
 
   return childProcess;
-};
-
-// Reload the process
-const reload = async () => {
-  await stopProcess();
-  nodeProcess = startProcess();
-};
-
-// Stop the process
-const stopProcess = () => {
-  return new Promise((resolve) => {
-    if (nodeProcess) {
-      nodeProcess.kill();
-    }
-    const key = setInterval(() => {
-      if (processClosed) {
-        clearInterval(key);
-        resolve(true);
-      }
-    }, 500);
-  });
-};
-
-// Display the introductory message with available commands
-const displayIntroMessage = () => {
-  console.log("\x1b[33m%s\x1b[0m", "Welcome! Here are the available commands:");
-  console.log("\x1b[32m%s\x1b[0m", "  rs     - Restart the server manually");
-  console.log(
-    "\x1b[32m%s\x1b[0m",
-    "  toggle - Toggle the display format between JSON and normal"
-  );
-  console.log("\x1b[32m%s\x1b[0m", "  seeFiles - Show the full directory tree");
-};
-
-// Initialize the directory watcher and process manager
-const init = () => {
-  displayIntroMessage();
-  const dirPath = process.cwd(); // Use the current working directory
-
-  // Initial directory read (only show if requested)
-  if (showFullTree) {
-    readDirectory(dirPath);
-  }
-
-  // Watch the directory for changes
-  fs.watch(dirPath, { recursive: true }, (eventType, filename) => {
-    if (filename) {
-      if (showFullTree) {
-        readDirectory(dirPath);
-      } else {
-        console.log(`Changed file: ${filename}`);
-      }
-
-      // Debounce the reload function
-      clearTimeout(changeTimeout);
-      changeTimeout = setTimeout(() => {
-        reload();
-      }, 100);
-    }
-  });
-
-  nodeProcess = startProcess();
-
-  // Listening for 'rs', 'toggle', and 'seeFiles' inputs
-  process.stdin.on("data", async (chunk) => {
-    const data = chunk.toString().trim();
-    if (data === "rs") {
-      await reload();
-    } else if (data === "toggle") {
-      displayAsJson = !displayAsJson;
-      console.log(
-        `Display format toggled to ${displayAsJson ? "JSON" : "normal"}`
-      );
-    } else if (data === "seeFiles") {
-      showFullTree = !showFullTree;
-      if (showFullTree) {
-        readDirectory(dirPath);
-      }
-      console.log(
-        `Directory tree display ${showFullTree ? "enabled" : "disabled"}`
-      );
-    }
-  });
-
-  process.on("SIGINT", async () => {
-    await stopProcess();
-    process.exit();
-  });
-
-  process.on("SIGTERM", async () => {
-    await stopProcess();
-    process.exit();
-  });
-};
-
-// Ensure the module exports the init function
-module.exports = { init };
-
-// Automatically call init if the script is run directly
-if (require.main === module) {
-  init();
 }
+
+function watchFiles() {
+  chokidar
+    .watch(watchPaths, {
+      ignored: ["**/node_modules/*", "**/.env", "**/.gitignore", "**/*.txt"],
+      ignoreInitial: true,
+    })
+    .on(
+      "all",
+      debounce(async () => {
+        await reloadServer();
+      }, delayTime)
+    );
+}
+
+function debounce(func, wait) {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+async function reloadServer() {
+  await stopServerProcess();
+  serverProcess = startServerProcess();
+}
+
+async function stopServerProcess() {
+  return new Promise((resolve) => {
+    if (serverProcess) {
+      serverProcess.kill();
+      const intervalId = setInterval(() => {
+        if (isProcessClosed) {
+          clearInterval(intervalId);
+          resolve(true);
+        }
+      }, intervalTime);
+    } else {
+      resolve(true);
+    }
+  });
+}
+
+async function handleClose() {
+  await stopServerProcess();
+  console.log(messages.closing);
+  process.exit();
+}
+
+function displayDevDetails() {
+  console.log(messages.developerInfo);
+  console.log(messages.developerStatus);
+  console.log(messages.developerEmail);
+}
+
+function libraryFunction() {
+  console.log("Hello from the library!");
+}
+
+module.exports = {
+  libraryFunction,
+};
