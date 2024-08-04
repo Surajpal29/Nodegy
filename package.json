@@ -1,6 +1,6 @@
 {
   "name": "nodegy",
-  "version": "1.4.2",
+  "version": "2.0.0",
   "scripts": {
     "start": "node khudkanodemon.js"
   },
@@ -15,17 +15,17 @@
     "chokidar": "^3.6.0"
   },
   "keywords": [
-    "vegazync",
     "watch",
-    "monitor",
+    "nodegy",
     "development",
     "restart",
-    "autoload",
+    "monitor",
     "reload",
     "terminal",
-    "fs",
+    "autoload",
     "file",
     "cli",
-    "trending"
+    "trending",
+    "fs"
   ]
 }
